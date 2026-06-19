@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Planche QR CSR Tags SRT</title>
+<style>
+body{margin:0;background:#f3f4f6;color:#111;font-family:Arial,system-ui,sans-serif}
+.page{max-width:980px;margin:0 auto;padding:24px}
+.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}
+h1{margin:0;font-size:30px}.sub{color:#555;margin-top:6px}.btn{border:0;border-radius:8px;background:#111;color:white;font-weight:900;padding:12px 16px;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.card{background:white;border:2px solid #111;border-radius:10px;padding:18px;display:grid;grid-template-columns:190px 1fr;gap:18px;align-items:center;break-inside:avoid}
+.qr{width:190px;height:190px;display:flex;align-items:center;justify-content:center;background:white}
+.qr svg{width:190px;height:190px;display:block}
+.name{font-size:42px;font-weight:950;letter-spacing:0}.label{font-size:14px;color:#555;font-weight:900;text-transform:uppercase;margin-top:12px}.payload{font-size:15px;word-break:break-all;margin-top:6px}
+.hint{margin-top:18px;color:#555;font-size:14px}
+@media print{
+  body{background:white}.page{padding:10mm}.btn,.hint{display:none}.card{border:2px solid #000}.grid{gap:10mm}
+}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.card{grid-template-columns:150px 1fr}.qr,.qr svg{width:150px;height:150px}.name{font-size:34px}}
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="top">
+    <div>
+      <h1>Planche QR CSR Tags SRT</h1>
+      <div class="sub">QR codes officiels pour association Terminal SRT</div>
+    </div>
+    <button class="btn" onclick="window.print()">Imprimer</button>
+  </div>
+  <section class="grid" id="grid"></section>
+  <div class="hint">Si le scan camera ne fonctionne pas, saisir manuellement le code affiche sous chaque QR.</div>
+</main>
+<script>
+const tags=[
+  ["CSR-01","CSR_TAG|CSR-01|F0:B1:DA:66:E2:A3"],
+  ["CSR-02","CSR_TAG|CSR-02|C1:E8:FD:B8:94:FE"],
+  ["CSR-03","CSR_TAG|CSR-03|FF:C8:05:3C:65:7C"],
+  ["CSR-04","CSR_TAG|CSR-04|CD:FC:33:C8:8E:42"],
+  ["CSR-05","CSR_TAG|CSR-05|D4:39:87:CD:BA:2B"]
+];
+
+// QR Code version 3-L, byte mode, mask 0. Self-contained for offline use.
+const SIZE=29, DATA_CODEWORDS=55, ECC_CODEWORDS=15;
+function gfMul(x,y){let z=0;for(let i=7;i>=0;i--){z=(z<<1)^((z>>>7)*0x11D);if((y>>>i)&1)z^=x;}return z&255}
+function rsGenerator(degree){let g=[1];for(let i=0,root=1;i<degree;i++,root=gfMul(root,2)){let next=Array(g.length+1).fill(0);for(let j=0;j<g.length;j++){next[j]^=gfMul(g[j],root);next[j+1]^=g[j]}g=next}return g.slice(1)}
+function rsRemainder(data){const gen=rsGenerator(ECC_CODEWORDS);let rem=Array(ECC_CODEWORDS).fill(0);for(const b of data){const factor=b^rem.shift();rem.push(0);for(let i=0;i<ECC_CODEWORDS;i++)rem[i]^=gfMul(gen[i],factor)}return rem}
+function pushBits(arr,val,len){for(let i=len-1;i>=0;i--)arr.push((val>>>i)&1)}
+function makeData(payload){
+  const bytes=[...new TextEncoder().encode(payload)], bits=[];
+  pushBits(bits,0b0100,4);pushBits(bits,bytes.length,8);bytes.forEach(b=>pushBits(bits,b,8));pushBits(bits,0,Math.min(4,DATA_CODEWORDS*8-bits.length));
+  while(bits.length%8)bits.push(0);
+  const data=[];for(let i=0;i<bits.length;i+=8)data.push(bits.slice(i,i+8).reduce((a,b)=>(a<<1)|b,0));
+  for(let pad=0;data.length<DATA_CODEWORDS;pad^=1)data.push(pad?0x11:0xEC);
+  return data.concat(rsRemainder(data));
+}
+function blank(){return {m:Array.from({length:SIZE},()=>Array(SIZE).fill(false)),f:Array.from({length:SIZE},()=>Array(SIZE).fill(false))}}
+function setFun(q,x,y,dark){if(x>=0&&x<SIZE&&y>=0&&y<SIZE){q.m[y][x]=dark;q.f[y][x]=true}}
+function setMod(q,x,y,dark){q.m[y][x]=dark}
+function finder(q,x,y){
+  for(let dy=-1;dy<=7;dy++)for(let dx=-1;dx<=7;dx++){
+    const xx=x+dx,yy=y+dy,dist=Math.max(Math.abs(dx-3),Math.abs(dy-3));
+    setFun(q,xx,yy,dist!==2&&dist!==4);
+  }
+}
+function alignment(q,cx,cy){for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)setFun(q,cx+dx,cy+dy,Math.max(Math.abs(dx),Math.abs(dy))!==1)}
+function drawFunction(q){
+  finder(q,0,0);finder(q,SIZE-7,0);finder(q,0,SIZE-7);alignment(q,22,22);
+  for(let i=0;i<SIZE;i++){
+    if(!q.f[i][6])setFun(q,6,i,i%2===0);
+    if(!q.f[6][i])setFun(q,i,6,i%2===0);
+  }
+  setFun(q,8,SIZE-8,true);
+  for(let i=0;i<9;i++){setFun(q,8,i,false);setFun(q,i,8,false);setFun(q,SIZE-1-i,8,false);setFun(q,8,SIZE-1-i,false)}
+}
+function formatBits(mask){
+  let data=(1<<3)|mask, rem=data;
+  for(let i=0;i<10;i++)rem=(rem<<1)^(((rem>>>9)&1)*0x537);
+  return ((data<<10)|rem)^0x5412;
+}
+function drawFormat(q,mask){
+  const bits=formatBits(mask);
+  for(let i=0;i<=5;i++)setFun(q,8,i,((bits>>>i)&1)!==0);
+  setFun(q,8,7,((bits>>>6)&1)!==0);setFun(q,8,8,((bits>>>7)&1)!==0);setFun(q,7,8,((bits>>>8)&1)!==0);
+  for(let i=9;i<15;i++)setFun(q,14-i,8,((bits>>>i)&1)!==0);
+  for(let i=0;i<8;i++)setFun(q,SIZE-1-i,8,((bits>>>i)&1)!==0);
+  for(let i=8;i<15;i++)setFun(q,8,SIZE-15+i,((bits>>>i)&1)!==0);
+  setFun(q,8,SIZE-8,true);
+}
+function drawData(q,codewords){
+  const bits=[];codewords.forEach(b=>pushBits(bits,b,8));
+  let i=0, upward=true;
+  for(let right=SIZE-1;right>=1;right-=2){
+    if(right===6)right--;
+    for(let vert=0;vert<SIZE;vert++){
+      const y=upward?SIZE-1-vert:vert;
+      for(let x=right;x>=right-1;x--){
+        if(q.f[y][x])continue;
+        let dark=i<bits.length&&bits[i++]===1;
+        if(((x+y)&1)===0)dark=!dark;
+        setMod(q,x,y,dark);
+      }
+    }
+    upward=!upward;
+  }
+}
+function qrSvg(payload){
+  const q=blank();drawFunction(q);drawData(q,makeData(payload));drawFormat(q,0);
+  const quiet=4, dim=SIZE+quiet*2;
+  let path="";
+  for(let y=0;y<SIZE;y++)for(let x=0;x<SIZE;x++)if(q.m[y][x])path+=`M${x+quiet},${y+quiet}h1v1h-1z`;
+  return `<svg viewBox="0 0 ${dim} ${dim}" xmlns="http://www.w3.org/2000/svg" aria-label="${payload}"><rect width="${dim}" height="${dim}" fill="#fff"/><path d="${path}" fill="#000"/></svg>`;
+}
+
+const grid=document.getElementById("grid");
+tags.forEach(([name,payload])=>{
+  const card=document.createElement("article");
+  card.className="card";
+  card.innerHTML=`<div class="qr">${qrSvg(payload)}</div><div><div class="name">${name}</div><div class="label">Code association</div><div class="payload">${payload}</div></div>`;
+  grid.appendChild(card);
+});
+</script>
+</body>
+</html>
